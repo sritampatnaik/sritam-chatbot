@@ -1,17 +1,15 @@
-import { getChatsByUserId } from "@/db/queries";
-import { createClient } from "@/lib/supabase/server";
+import { NextRequest } from "next/server";
 
-export async function GET() {
-  const supabase = await createClient();
+import { getChatsByGuestId } from "@/db/queries";
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const guestId = searchParams.get("guestId");
 
-  if (!user) {
-    return Response.json("Unauthorized!", { status: 401 });
+  if (!guestId) {
+    return Response.json("Guest ID required", { status: 400 });
   }
 
-  const chats = await getChatsByUserId({ id: user.id });
+  const chats = await getChatsByGuestId({ id: guestId });
   return Response.json(chats);
 }

@@ -8,6 +8,13 @@
       "when": 1728635586378,
       "tag": "0000_absurd_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1731364800000,
+      "tag": "0001_fresh_schema",
+      "breakpoints": true
     }
   ]
 }

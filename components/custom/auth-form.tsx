@@ -1,17 +1,27 @@
+"use client";
+
+import { useActionState } from "react";
+
+import { adminLogin } from "@/app/(auth)/actions";
+
+import { SubmitButton } from "./submit-button";
+
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
 export function AuthForm({
   action,
-  children,
-  defaultEmail = "",
+  isAdmin = false,
 }: {
-  action: any;
-  children: React.ReactNode;
-  defaultEmail?: string;
+  action: string;
+  isAdmin?: boolean;
 }) {
+  const [state, formAction] = useActionState(adminLogin, {
+    status: "idle",
+  });
+
   return (
-    <form action={action} className="flex flex-col gap-4 px-4 sm:px-16">
+    <form action={formAction} className="flex flex-col gap-4 px-4 sm:px-16">
       <div className="flex flex-col gap-2">
         <Label
           htmlFor="email"
@@ -25,10 +35,9 @@ export function AuthForm({
           name="email"
           className="bg-muted text-md md:text-sm border-none"
           type="email"
-          placeholder="user@acme.com"
+          placeholder="admin@example.com"
           autoComplete="email"
           required
-          defaultValue={defaultEmail}
         />
 
         <Label
@@ -47,7 +56,13 @@ export function AuthForm({
         />
       </div>
 
-      {children}
+      {state.status === "failed" && (
+        <p className="text-red-500 text-sm">Invalid credentials</p>
+      )}
+
+      <SubmitButton isSuccessful={state.status === "success"}>
+        {action}
+      </SubmitButton>
     </form>
   );
 }

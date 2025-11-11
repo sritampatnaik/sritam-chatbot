@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { createUser } from "@/db/queries";
+import { getAdmin } from "@/db/queries";
 import { createClient } from "@/lib/supabase/server";
 
 const authFormSchema = z.object({
@@ -82,13 +82,48 @@ export const register = async (
       return { status: "failed" };
     }
 
-    if (data.user) {
-      // Create user in our custom User table
-      await createUser(data.user.id, validatedData.email);
-    }
+    // Guest registration is no longer needed - guests only provide email
 
     revalidatePath("/", "layout");
     redirect("/");
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { status: "invalid_data" };
+    }
+
+    return { status: "failed" };
+  }
+};
+
+export const adminLogin = async (
+  _: LoginActionState,
+  formData: FormData,
+): Promise<LoginActionState> => {
+  try {
+    const validatedData = authFormSchema.parse({
+      email: formData.get("email"),
+      password: formData.get("password"),
+    });
+
+    // Check if user is admin
+    const admin = await getAdmin(validatedData.email);
+    if (!admin) {
+      return { status: "failed" };
+    }
+
+    const supabase = await createClient();
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: validatedData.email,
+      password: validatedData.password,
+    });
+
+    if (error) {
+      return { status: "failed" };
+    }
+
+    revalidatePath("/admin", "layout");
+    redirect("/admin/dashboard");
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { status: "invalid_data" };

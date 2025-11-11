@@ -3,33 +3,24 @@ import { z } from "zod";
 
 import { geminiProModel } from "@/ai";
 import {
-  generateReservationPrice,
-  generateSampleFlightSearchResults,
-  generateSampleFlightStatus,
-  generateSampleSeatSelection,
-} from "@/ai/actions";
-import {
-  createReservation,
+  createMeeting,
   deleteChatById,
   getChatById,
-  getReservationById,
+  getMeetingById,
   saveChat,
 } from "@/db/queries";
-import { createClient } from "@/lib/supabase/server";
+import {
+  checkAvailability,
+  createCalendarEvent,
+} from "@/lib/google-calendar/calendar";
 import { generateUUID } from "@/lib/utils";
 
 export async function POST(request: Request) {
-  const { id, messages }: { id: string; messages: Array<Message> } =
+  const { id, messages, guestId }: { id: string; messages: Array<Message>; guestId: string } =
     await request.json();
 
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return new Response("Unauthorized", { status: 401 });
+  if (!guestId) {
+    return new Response("Guest ID required", { status: 400 });
   }
 
   const coreMessages = convertToCoreMessages(messages).filter(
@@ -38,201 +29,149 @@ export async function POST(request: Request) {
 
   const result = await streamText({
     model: geminiProModel,
-    system: `\n
-        - you help users book flights!
-        - keep your responses limited to a sentence.
-        - DO NOT output lists.
-        - after every tool call, pretend you're showing the result to the user and keep your response limited to a phrase.
-        - today's date is ${new Date().toLocaleDateString()}.
-        - ask follow up questions to nudge user into the optimal flow
-        - ask for any details you don't know, like name of passenger, etc.'
-        - C and D are aisle seats, A and F are window seats, B and E are middle seats
-        - assume the most popular airports for the origin and destination
-        - here's the optimal flow
-          - search for flights
-          - choose flight
-          - select seats
-          - create reservation (ask user whether to proceed with payment or change reservation)
-          - authorize payment (requires user consent, wait for user to finish payment and let you know when done)
-          - display boarding pass (DO NOT display boarding pass without verifying payment)
-        '
+    system: `
+        - You are a helpful meeting booking assistant
+        - Help users book 30-minute meetings
+        - Keep your responses limited to 1-2 sentences
+        - Be friendly and conversational
+        - Today's date is ${new Date().toLocaleDateString()}
+        - Ask for any details you don't know (name, preferred date/time)
+        - Meetings are 30 minutes long
+        - Available hours: 9:00 AM - 5:00 PM (weekdays)
+        - Time zone: America/Los_Angeles
+        - Optimal flow:
+          1. Greet the user and ask when they'd like to meet
+          2. Check availability for their requested date
+          3. Suggest available time slots
+          4. Get their name
+          5. Confirm the meeting details
+          6. Create the meeting
+        - After creating a meeting, provide confirmation with the date and time
       `,
     messages: coreMessages,
     tools: {
-      getWeather: {
-        description: "Get the current weather at a location",
+      checkAvailability: {
+        description: "Check available meeting slots for a specific date",
         parameters: z.object({
-          latitude: z.number().describe("Latitude coordinate"),
-          longitude: z.number().describe("Longitude coordinate"),
+          date: z.string().describe("Date to check availability (YYYY-MM-DD format)"),
         }),
-        execute: async ({ latitude, longitude }) => {
-          const response = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m&hourly=temperature_2m&daily=sunrise,sunset&timezone=auto`,
-          );
+        execute: async ({ date }) => {
+          try {
+            const requestedDate = new Date(date);
+            requestedDate.setHours(0, 0, 0, 0);
+            
+            const endDate = new Date(requestedDate);
+            endDate.setHours(23, 59, 59, 999);
 
-          const weatherData = await response.json();
-          return weatherData;
-        },
-      },
-      displayFlightStatus: {
-        description: "Display the status of a flight",
-        parameters: z.object({
-          flightNumber: z.string().describe("Flight number"),
-          date: z.string().describe("Date of the flight"),
-        }),
-        execute: async ({ flightNumber, date }) => {
-          const flightStatus = await generateSampleFlightStatus({
-            flightNumber,
-            date,
-          });
-
-          return flightStatus;
-        },
-      },
-      searchFlights: {
-        description: "Search for flights based on the given parameters",
-        parameters: z.object({
-          origin: z.string().describe("Origin airport or city"),
-          destination: z.string().describe("Destination airport or city"),
-        }),
-        execute: async ({ origin, destination }) => {
-          const results = await generateSampleFlightSearchResults({
-            origin,
-            destination,
-          });
-
-          return results;
-        },
-      },
-      selectSeats: {
-        description: "Select seats for a flight",
-        parameters: z.object({
-          flightNumber: z.string().describe("Flight number"),
-        }),
-        execute: async ({ flightNumber }) => {
-          const seats = await generateSampleSeatSelection({ flightNumber });
-          return seats;
-        },
-      },
-      createReservation: {
-        description: "Display pending reservation details",
-        parameters: z.object({
-          seats: z.string().array().describe("Array of selected seat numbers"),
-          flightNumber: z.string().describe("Flight number"),
-          departure: z.object({
-            cityName: z.string().describe("Name of the departure city"),
-            airportCode: z.string().describe("Code of the departure airport"),
-            timestamp: z.string().describe("ISO 8601 date of departure"),
-            gate: z.string().describe("Departure gate"),
-            terminal: z.string().describe("Departure terminal"),
-          }),
-          arrival: z.object({
-            cityName: z.string().describe("Name of the arrival city"),
-            airportCode: z.string().describe("Code of the arrival airport"),
-            timestamp: z.string().describe("ISO 8601 date of arrival"),
-            gate: z.string().describe("Arrival gate"),
-            terminal: z.string().describe("Arrival terminal"),
-          }),
-          passengerName: z.string().describe("Name of the passenger"),
-        }),
-        execute: async (props) => {
-          const { totalPriceInUSD } = await generateReservationPrice(props);
-          const supabase = await createClient();
-
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-
-          const id = generateUUID();
-
-          if (user && user.id) {
-            await createReservation({
-              id,
-              userId: user.id,
-              details: { ...props, totalPriceInUSD },
-            });
-
-            return { id, ...props, totalPriceInUSD };
-          } else {
+            const availableSlots = await checkAvailability(requestedDate, endDate);
+            
             return {
-              error: "User is not signed in to perform this action!",
+              date,
+              availableSlots: availableSlots.slice(0, 5), // Return first 5 slots
+              totalAvailable: availableSlots.length,
+            };
+          } catch (error) {
+            console.error("Error checking availability:", error);
+            return {
+              error: "Unable to check availability at this time. Please try again.",
             };
           }
         },
       },
-      authorizePayment: {
-        description:
-          "User will enter credentials to authorize payment, wait for user to repond when they are done",
+      createMeeting: {
+        description: "Create a meeting booking after confirming all details with the user",
         parameters: z.object({
-          reservationId: z
-            .string()
-            .describe("Unique identifier for the reservation"),
+          guestName: z.string().describe("Full name of the guest"),
+          guestEmail: z.string().describe("Email address of the guest"),
+          startTime: z.string().describe("Meeting start time (ISO 8601 format)"),
+          title: z.string().describe("Meeting title/subject"),
         }),
-        execute: async ({ reservationId }) => {
-          return { reservationId };
-        },
-      },
-      verifyPayment: {
-        description: "Verify payment status",
-        parameters: z.object({
-          reservationId: z
-            .string()
-            .describe("Unique identifier for the reservation"),
-        }),
-        execute: async ({ reservationId }) => {
-          const reservation = await getReservationById({ id: reservationId });
+        execute: async ({ guestName, guestEmail, startTime, title }) => {
+          try {
+            const start = new Date(startTime);
+            const end = new Date(start.getTime() + 30 * 60 * 1000); // 30 minutes later
 
-          if (reservation.hasCompletedPayment) {
-            return { hasCompletedPayment: true };
-          } else {
-            return { hasCompletedPayment: false };
+            // Create calendar event
+            const googleEventId = await createCalendarEvent({
+              title,
+              startTime: start,
+              endTime: end,
+              guestEmail,
+              guestName,
+              description: `Meeting with ${guestName}`,
+            });
+
+            // Create meeting record in database
+            const meetingId = generateUUID();
+            await createMeeting({
+              id: meetingId,
+              guestId,
+              title,
+              startTime: start,
+              endTime: end,
+              duration: "30 minutes",
+              guestName,
+              guestEmail,
+              googleEventId,
+            });
+
+            return {
+              success: true,
+              meetingId,
+              title,
+              startTime: start.toISOString(),
+              endTime: end.toISOString(),
+              guestName,
+              duration: "30 minutes",
+            };
+          } catch (error) {
+            console.error("Error creating meeting:", error);
+            return {
+              error: "Unable to create meeting. Please try again.",
+            };
           }
         },
       },
-      displayBoardingPass: {
-        description: "Display a boarding pass",
+      getMeetingDetails: {
+        description: "Get details of a booked meeting",
         parameters: z.object({
-          reservationId: z
-            .string()
-            .describe("Unique identifier for the reservation"),
-          passengerName: z
-            .string()
-            .describe("Name of the passenger, in title case"),
-          flightNumber: z.string().describe("Flight number"),
-          seat: z.string().describe("Seat number"),
-          departure: z.object({
-            cityName: z.string().describe("Name of the departure city"),
-            airportCode: z.string().describe("Code of the departure airport"),
-            airportName: z.string().describe("Name of the departure airport"),
-            timestamp: z.string().describe("ISO 8601 date of departure"),
-            terminal: z.string().describe("Departure terminal"),
-            gate: z.string().describe("Departure gate"),
-          }),
-          arrival: z.object({
-            cityName: z.string().describe("Name of the arrival city"),
-            airportCode: z.string().describe("Code of the arrival airport"),
-            airportName: z.string().describe("Name of the arrival airport"),
-            timestamp: z.string().describe("ISO 8601 date of arrival"),
-            terminal: z.string().describe("Arrival terminal"),
-            gate: z.string().describe("Arrival gate"),
-          }),
+          meetingId: z.string().describe("Unique identifier for the meeting"),
         }),
-        execute: async (boardingPass) => {
-          return boardingPass;
+        execute: async ({ meetingId }) => {
+          try {
+            const meeting = await getMeetingById({ id: meetingId });
+            
+            if (!meeting) {
+              return { error: "Meeting not found" };
+            }
+
+            return {
+              meetingId: meeting.id,
+              title: meeting.title,
+              startTime: meeting.startTime.toISOString(),
+              endTime: meeting.endTime.toISOString(),
+              guestName: meeting.guestName,
+              status: meeting.status,
+              duration: meeting.duration,
+            };
+          } catch (error) {
+            console.error("Error getting meeting details:", error);
+            return {
+              error: "Unable to retrieve meeting details.",
+            };
+          }
         },
       },
     },
     onFinish: async ({ responseMessages }) => {
-      if (user && user.id) {
-        try {
-          await saveChat({
-            id,
-            messages: [...coreMessages, ...responseMessages],
-            userId: user.id,
-          });
-        } catch (error) {
-          console.error("Failed to save chat");
-        }
+      try {
+        await saveChat({
+          id,
+          messages: [...coreMessages, ...responseMessages],
+          guestId,
+        });
+      } catch (error) {
+        console.error("Failed to save chat");
       }
     },
     experimental_telemetry: {
@@ -247,25 +186,16 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
+  const guestId = searchParams.get("guestId");
 
-  if (!id) {
-    return new Response("Not Found", { status: 404 });
-  }
-
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return new Response("Unauthorized", { status: 401 });
+  if (!id || !guestId) {
+    return new Response("Missing required parameters", { status: 400 });
   }
 
   try {
     const chat = await getChatById({ id });
 
-    if (chat.userId !== user.id) {
+    if (!chat || chat.guestId !== guestId) {
       return new Response("Unauthorized", { status: 401 });
     }
 

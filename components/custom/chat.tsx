@@ -17,10 +17,13 @@ export function Chat({
   id: string;
   initialMessages: Array<Message>;
 }) {
+  // Get guestId from localStorage
+  const guestId = typeof window !== "undefined" ? localStorage.getItem("guestId") : null;
+
   const { messages, handleSubmit, input, setInput, append, isLoading, stop } =
     useChat({
       id,
-      body: { id },
+      body: { id, guestId },
       initialMessages,
       maxSteps: 10,
       onFinish: () => {

@@ -7,14 +7,9 @@ import { ReactNode } from "react";
 import { BotIcon, UserIcon } from "./icons";
 import { Markdown } from "./markdown";
 import { PreviewAttachment } from "./preview-attachment";
-import { Weather } from "./weather";
-import { AuthorizePayment } from "../flights/authorize-payment";
-import { DisplayBoardingPass } from "../flights/boarding-pass";
-import { CreateReservation } from "../flights/create-reservation";
-import { FlightStatus } from "../flights/flight-status";
-import { ListFlights } from "../flights/list-flights";
-import { SelectSeats } from "../flights/select-seats";
-import { VerifyPayment } from "../flights/verify-payment";
+import { AvailableSlots } from "../meetings/available-slots";
+import { BookingSummary } from "../meetings/booking-summary";
+import { MeetingConfirmation } from "../meetings/meeting-confirmation";
 
 export const Message = ({
   chatId,
@@ -56,46 +51,54 @@ export const Message = ({
 
                 return (
                   <div key={toolCallId}>
-                    {toolName === "getWeather" ? (
-                      <Weather weatherAtLocation={result} />
-                    ) : toolName === "displayFlightStatus" ? (
-                      <FlightStatus flightStatus={result} />
-                    ) : toolName === "searchFlights" ? (
-                      <ListFlights chatId={chatId} results={result} />
-                    ) : toolName === "selectSeats" ? (
-                      <SelectSeats chatId={chatId} availability={result} />
-                    ) : toolName === "createReservation" ? (
+                    {toolName === "checkAvailability" ? (
                       Object.keys(result).includes("error") ? null : (
-                        <CreateReservation reservation={result} />
+                        <AvailableSlots
+                          date={result.date}
+                          availableSlots={result.availableSlots}
+                          totalAvailable={result.totalAvailable}
+                        />
                       )
-                    ) : toolName === "authorizePayment" ? (
-                      <AuthorizePayment intent={result} />
-                    ) : toolName === "displayBoardingPass" ? (
-                      <DisplayBoardingPass boardingPass={result} />
-                    ) : toolName === "verifyPayment" ? (
-                      <VerifyPayment result={result} />
+                    ) : toolName === "createMeeting" ? (
+                      Object.keys(result).includes("error") ? null : (
+                        <MeetingConfirmation
+                          title={result.title}
+                          startTime={result.startTime}
+                          endTime={result.endTime}
+                          guestName={result.guestName}
+                          duration={result.duration}
+                          meetingId={result.meetingId}
+                          success={result.success}
+                        />
+                      )
+                    ) : toolName === "getMeetingDetails" ? (
+                      Object.keys(result).includes("error") ? null : (
+                        <BookingSummary
+                          title={result.title}
+                          startTime={result.startTime}
+                          endTime={result.endTime}
+                          guestName={result.guestName}
+                          status={result.status}
+                          duration={result.duration}
+                          meetingId={result.meetingId}
+                        />
+                      )
                     ) : (
-                      <div>{JSON.stringify(result, null, 2)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {JSON.stringify(result, null, 2)}
+                      </div>
                     )}
                   </div>
                 );
               } else {
                 return (
                   <div key={toolCallId} className="skeleton">
-                    {toolName === "getWeather" ? (
-                      <Weather />
-                    ) : toolName === "displayFlightStatus" ? (
-                      <FlightStatus />
-                    ) : toolName === "searchFlights" ? (
-                      <ListFlights chatId={chatId} />
-                    ) : toolName === "selectSeats" ? (
-                      <SelectSeats chatId={chatId} />
-                    ) : toolName === "createReservation" ? (
-                      <CreateReservation />
-                    ) : toolName === "authorizePayment" ? (
-                      <AuthorizePayment />
-                    ) : toolName === "displayBoardingPass" ? (
-                      <DisplayBoardingPass />
+                    {toolName === "checkAvailability" ? (
+                      <AvailableSlots />
+                    ) : toolName === "createMeeting" ? (
+                      <MeetingConfirmation />
+                    ) : toolName === "getMeetingDetails" ? (
+                      <BookingSummary />
                     ) : null}
                   </div>
                 );

@@ -1,10 +1,10 @@
 import { CoreMessage } from "ai";
 import { notFound } from "next/navigation";
 
-import { auth } from "@/app/(auth)/auth";
 import { Chat as PreviewChat } from "@/components/custom/chat";
 import { getChatById } from "@/db/queries";
 import { Chat } from "@/db/schema";
+import { createClient } from "@/lib/supabase/server";
 import { convertToUIMessages } from "@/lib/utils";
 
 export default async function Page({ params }: { params: any }) {
@@ -21,13 +21,17 @@ export default async function Page({ params }: { params: any }) {
     messages: convertToUIMessages(chatFromDb.messages as Array<CoreMessage>),
   };
 
-  const session = await auth();
+  const supabase = await createClient();
 
-  if (!session || !session.user) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return notFound();
   }
 
-  if (session.user.id !== chat.userId) {
+  if (user.id !== chat.userId) {
     return notFound();
   }
 

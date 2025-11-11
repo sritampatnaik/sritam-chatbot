@@ -1,9 +1,13 @@
-import NextAuth from "next-auth";
+import { type NextRequest } from "next/server";
 
-import { authConfig } from "@/app/(auth)/auth.config";
+import { updateSession } from "@/lib/supabase/middleware";
 
-export default NextAuth(authConfig).auth;
+export async function middleware(request: NextRequest) {
+  return await updateSession(request);
+}
 
 export const config = {
-  matcher: ["/", "/:id", "/api/:path*", "/login", "/register"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

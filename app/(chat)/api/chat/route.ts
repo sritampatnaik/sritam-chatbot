@@ -8,7 +8,6 @@ import {
   generateSampleFlightStatus,
   generateSampleSeatSelection,
 } from "@/ai/actions";
-import { auth } from "@/app/(auth)/auth";
 import {
   createReservation,
   deleteChatById,
@@ -16,15 +15,20 @@ import {
   getReservationById,
   saveChat,
 } from "@/db/queries";
+import { createClient } from "@/lib/supabase/server";
 import { generateUUID } from "@/lib/utils";
 
 export async function POST(request: Request) {
   const { id, messages }: { id: string; messages: Array<Message> } =
     await request.json();
 
-  const session = await auth();
+  const supabase = await createClient();
 
-  if (!session) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -133,14 +137,18 @@ export async function POST(request: Request) {
         }),
         execute: async (props) => {
           const { totalPriceInUSD } = await generateReservationPrice(props);
-          const session = await auth();
+          const supabase = await createClient();
+
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
 
           const id = generateUUID();
 
-          if (session && session.user && session.user.id) {
+          if (user && user.id) {
             await createReservation({
               id,
-              userId: session.user.id,
+              userId: user.id,
               details: { ...props, totalPriceInUSD },
             });
 
@@ -215,12 +223,12 @@ export async function POST(request: Request) {
       },
     },
     onFinish: async ({ responseMessages }) => {
-      if (session.user && session.user.id) {
+      if (user && user.id) {
         try {
           await saveChat({
             id,
             messages: [...coreMessages, ...responseMessages],
-            userId: session.user.id,
+            userId: user.id,
           });
         } catch (error) {
           console.error("Failed to save chat");
@@ -244,16 +252,20 @@ export async function DELETE(request: Request) {
     return new Response("Not Found", { status: 404 });
   }
 
-  const session = await auth();
+  const supabase = await createClient();
 
-  if (!session || !session.user) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return new Response("Unauthorized", { status: 401 });
   }
 
   try {
     const chat = await getChatById({ id });
 
-    if (chat.userId !== session.user.id) {
+    if (chat.userId !== user.id) {
       return new Response("Unauthorized", { status: 401 });
     }
 

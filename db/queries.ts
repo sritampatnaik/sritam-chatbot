@@ -1,16 +1,12 @@
 import "server-only";
 
-import { genSaltSync, hashSync } from "bcrypt-ts";
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { user, chat, User, reservation } from "./schema";
 
-// Optionally, if not using email/pass login, you can
-// use the Drizzle adapter for Auth.js / NextAuth
-// https://authjs.dev/reference/adapter/drizzle
-let client = postgres(`${process.env.POSTGRES_URL!}?sslmode=require`);
+let client = postgres(`${process.env.SUPABASE_DATABASE_URL!}`);
 let db = drizzle(client);
 
 export async function getUser(email: string): Promise<Array<User>> {
@@ -22,12 +18,9 @@ export async function getUser(email: string): Promise<Array<User>> {
   }
 }
 
-export async function createUser(email: string, password: string) {
-  let salt = genSaltSync(10);
-  let hash = hashSync(password, salt);
-
+export async function createUser(id: string, email: string) {
   try {
-    return await db.insert(user).values({ email, password: hash });
+    return await db.insert(user).values({ id, email, password: null });
   } catch (error) {
     console.error("Failed to create user in database");
     throw error;

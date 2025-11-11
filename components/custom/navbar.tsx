@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { auth, signOut } from "@/app/(auth)/auth";
+import { signOut } from "@/app/(auth)/actions";
+import { createClient } from "@/lib/supabase/server";
 
 import { History } from "./history";
 import { SlashIcon } from "./icons";
@@ -15,13 +16,17 @@ import {
 } from "../ui/dropdown-menu";
 
 export const Navbar = async () => {
-  let session = await auth();
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   return (
     <>
       <div className="bg-background absolute top-0 left-0 w-dvw py-2 px-3 justify-between flex flex-row items-center z-30">
         <div className="flex flex-row gap-3 items-center">
-          <History user={session?.user} />
+          <History user={user ? { id: user.id, email: user.email } : undefined} />
           <div className="flex flex-row gap-2 items-center">
             <Image
               src="/images/gemini-logo.png"
@@ -38,14 +43,14 @@ export const Navbar = async () => {
           </div>
         </div>
 
-        {session ? (
+        {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 className="py-1.5 px-2 h-fit font-normal"
                 variant="secondary"
               >
-                {session.user?.email}
+                {user.email}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -58,9 +63,7 @@ export const Navbar = async () => {
                   action={async () => {
                     "use server";
 
-                    await signOut({
-                      redirectTo: "/",
-                    });
+                    await signOut();
                   }}
                 >
                   <button

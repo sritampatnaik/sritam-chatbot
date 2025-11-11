@@ -1,12 +1,17 @@
-import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/app/(auth)/auth";
+import { createClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const FileSchema = z.object({
   file: z
-    .instanceof(File)
+    .any()
+    .refine((file) => file instanceof File, {
+      message: "Must be a file",
+    })
     .refine((file) => file.size <= 5 * 1024 * 1024, {
       message: "File size should be less than 5MB",
     })
@@ -20,9 +25,13 @@ const FileSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const supabase = await createClient();
 
-  if (!session) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -48,15 +57,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: errorMessage }, { status: 400 });
     }
 
-    const filename = file.name;
+    const filename = `${Date.now()}-${file.name}`;
     const fileBuffer = await file.arrayBuffer();
 
     try {
-      const data = await put(`${filename}`, fileBuffer, {
-        access: "public",
-      });
+      const { data, error } = await supabase.storage
+        .from("attachments")
+        .upload(filename, fileBuffer, {
+          contentType: file.type,
+          upsert: false,
+        });
 
-      return NextResponse.json(data);
+      if (error) {
+        console.error("Supabase storage error:", error);
+        return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("attachments").getPublicUrl(data.path);
+
+      return NextResponse.json({
+        url: publicUrl,
+        pathname: filename,
+        contentType: file.type,
+      });
     } catch (error) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }

@@ -1,10 +1,11 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { createUser, getUser } from "@/db/queries";
-
-import { signIn } from "./auth";
+import { createUser } from "@/db/queries";
+import { createClient } from "@/lib/supabase/server";
 
 const authFormSchema = z.object({
   email: z.string().email(),
@@ -25,13 +26,19 @@ export const login = async (
       password: formData.get("password"),
     });
 
-    await signIn("credentials", {
+    const supabase = await createClient();
+
+    const { error } = await supabase.auth.signInWithPassword({
       email: validatedData.email,
       password: validatedData.password,
-      redirect: false,
     });
 
-    return { status: "success" };
+    if (error) {
+      return { status: "failed" };
+    }
+
+    revalidatePath("/", "layout");
+    redirect("/");
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { status: "invalid_data" };
@@ -61,20 +68,27 @@ export const register = async (
       password: formData.get("password"),
     });
 
-    let [user] = await getUser(validatedData.email);
+    const supabase = await createClient();
 
-    if (user) {
-      return { status: "user_exists" } as RegisterActionState;
-    } else {
-      await createUser(validatedData.email, validatedData.password);
-      await signIn("credentials", {
-        email: validatedData.email,
-        password: validatedData.password,
-        redirect: false,
-      });
+    const { data, error } = await supabase.auth.signUp({
+      email: validatedData.email,
+      password: validatedData.password,
+    });
 
-      return { status: "success" };
+    if (error) {
+      if (error.message.includes("already registered")) {
+        return { status: "user_exists" };
+      }
+      return { status: "failed" };
     }
+
+    if (data.user) {
+      // Create user in our custom User table
+      await createUser(data.user.id, validatedData.email);
+    }
+
+    revalidatePath("/", "layout");
+    redirect("/");
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { status: "invalid_data" };
@@ -83,3 +97,10 @@ export const register = async (
     return { status: "failed" };
   }
 };
+
+export async function signOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  revalidatePath("/", "layout");
+  redirect("/");
+}

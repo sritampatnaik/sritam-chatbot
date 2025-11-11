@@ -1,5 +1,5 @@
-import { auth } from "@/app/(auth)/auth";
 import { getReservationById, updateReservation } from "@/db/queries";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -9,16 +9,20 @@ export async function GET(request: Request) {
     return new Response("Not Found!", { status: 404 });
   }
 
-  const session = await auth();
+  const supabase = await createClient();
 
-  if (!session || !session.user) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return new Response("Unauthorized!", { status: 401 });
   }
 
   try {
     const reservation = await getReservationById({ id });
 
-    if (reservation.userId !== session.user.id) {
+    if (reservation.userId !== user.id) {
       return new Response("Unauthorized!", { status: 401 });
     }
 
@@ -38,9 +42,13 @@ export async function PATCH(request: Request) {
     return new Response("Not Found!", { status: 404 });
   }
 
-  const session = await auth();
+  const supabase = await createClient();
 
-  if (!session || !session.user) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return new Response("Unauthorized!", { status: 401 });
   }
 
@@ -51,7 +59,7 @@ export async function PATCH(request: Request) {
       return new Response("Reservation not found!", { status: 404 });
     }
 
-    if (reservation.userId !== session.user.id) {
+    if (reservation.userId !== user.id) {
       return new Response("Unauthorized!", { status: 401 });
     }
 

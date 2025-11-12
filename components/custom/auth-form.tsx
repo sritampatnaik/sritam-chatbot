@@ -4,10 +4,9 @@ import { useActionState } from "react";
 
 import { adminLogin } from "@/app/(auth)/actions";
 
-import { SubmitButton } from "./submit-button";
-
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SubmitButton } from "./submit-button";
 
 export function AuthForm({
   action,

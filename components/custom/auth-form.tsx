@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { adminLogin } from "@/app/(auth)/actions";
+import { adminLogin, LoginActionState } from "@/app/(auth)/actions";
 
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -15,7 +15,7 @@ export function AuthForm({
   action: string;
   isAdmin?: boolean;
 }) {
-  const [state, formAction] = useActionState(adminLogin, {
+  const [state, formAction] = useActionState<LoginActionState, FormData>(adminLogin, {
     status: "idle",
   });
 

@@ -2,6 +2,9 @@
 
 import { format } from "date-fns";
 import { motion } from "framer-motion";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface TimeSlot {
   start: string;
@@ -12,9 +15,12 @@ interface AvailableSlotsProps {
   date?: string;
   availableSlots?: TimeSlot[];
   totalAvailable?: number;
+  onSlotSelect?: (slot: TimeSlot) => void;
 }
 
-export function AvailableSlots({ date, availableSlots, totalAvailable }: AvailableSlotsProps) {
+export function AvailableSlots({ date, availableSlots, totalAvailable, onSlotSelect }: AvailableSlotsProps) {
+  const [showAll, setShowAll] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   if (!date || !availableSlots) {
     return (
       <div className="border rounded-lg p-6 space-y-4 bg-muted/50">
@@ -43,30 +49,60 @@ export function AvailableSlots({ date, availableSlots, totalAvailable }: Availab
 
       {availableSlots.length > 0 ? (
         <div className="space-y-2">
-          {availableSlots.map((slot, index) => {
+          {(showAll ? availableSlots : availableSlots.slice(0, 5)).map((slot, index) => {
             const startTime = new Date(slot.start);
             const endTime = new Date(slot.end);
+            const isSelected = selectedSlot === index;
             
             return (
-              <div
+              <button
                 key={index}
-                className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                onClick={() => {
+                  setSelectedSlot(index);
+                  onSlotSelect?.(slot);
+                }}
+                className={`w-full flex items-center justify-between p-3 border rounded-lg transition-all ${
+                  isSelected 
+                    ? "bg-primary text-primary-foreground border-primary" 
+                    : "hover:bg-muted/50 hover:border-muted-foreground/20"
+                }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="text-sm font-medium">
                     {format(startTime, "h:mm a")} - {format(endTime, "h:mm a")}
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className={`text-xs ${isSelected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                     30 minutes
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
           
+          {availableSlots.length > 5 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAll(!showAll)}
+              className="w-full mt-2"
+            >
+              {showAll ? (
+                <>
+                  <ChevronUp className="size-4 mr-2" />
+                  Show less
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="size-4 mr-2" />
+                  Show {availableSlots.length - 5} more slots
+                </>
+              )}
+            </Button>
+          )}
+          
           {totalAvailable && totalAvailable > availableSlots.length && (
             <p className="text-xs text-muted-foreground text-center pt-2">
-              +{totalAvailable - availableSlots.length} more slots available
+              +{totalAvailable - availableSlots.length} additional slots available (not shown)
             </p>
           )}
         </div>

@@ -4,9 +4,9 @@ import { useActionState } from "react";
 
 import { adminLogin, LoginActionState } from "@/app/(auth)/actions";
 
+import { SubmitButton } from "./submit-button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { SubmitButton } from "./submit-button";
 
 export function AuthForm({
   action,
@@ -59,9 +59,7 @@ export function AuthForm({
         <p className="text-red-500 text-sm">Invalid credentials</p>
       )}
 
-      <SubmitButton isSuccessful={state.status === "success"}>
-        {action}
-      </SubmitButton>
+      <SubmitButton>{action}</SubmitButton>
     </form>
   );
 }

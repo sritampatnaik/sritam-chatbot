@@ -32,27 +32,22 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protected routes logic
-  const isOnChat = request.nextUrl.pathname.startsWith("/chat") ||
-    request.nextUrl.pathname === "/";
-  const isOnRegister = request.nextUrl.pathname.startsWith("/register");
-  const isOnLogin = request.nextUrl.pathname.startsWith("/login");
+  // Protected routes logic - only protect admin routes
+  const isOnAdminRoute = request.nextUrl.pathname.startsWith("/admin");
+  const isOnAdminLogin = request.nextUrl.pathname.startsWith("/admin/login");
   const isLoggedIn = !!user;
 
-  if (isLoggedIn && (isOnLogin || isOnRegister)) {
-    return NextResponse.redirect(new URL("/", request.url));
+  // Redirect logged in users away from admin login page
+  if (isLoggedIn && isOnAdminLogin) {
+    return NextResponse.redirect(new URL("/admin/dashboard", request.url));
   }
 
-  if (isOnRegister || isOnLogin) {
-    return supabaseResponse;
+  // Protect admin routes (except login page)
+  if (isOnAdminRoute && !isOnAdminLogin && !isLoggedIn) {
+    return NextResponse.redirect(new URL("/admin/login", request.url));
   }
 
-  if (isOnChat) {
-    if (!isLoggedIn) {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-  }
-
+  // Allow all other routes (guests can access / without login)
   return supabaseResponse;
 }
 
